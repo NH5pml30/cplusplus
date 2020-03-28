@@ -80,37 +80,75 @@ mul_long_short:
                 pop             rax
                 ret
 
-; multiplies long number by a qword-wise left-shifted 64-bit unsigned and adds result to another long
+; qword-wise left-shifts by 1 long number
+;    rdi -- address of multiplier #1 (long number)
+;    rcx -- length of long number in qwords
+; modifies:
+;    none
+; result:
+;    shifted number is written to rdi
+left_shift_long:
+                push            rax
+                push            rdi
+                push            rsi
+                push            rcx
+
+                lea             rsi, [rdi + rcx * 8 - 16]
+                lea             rdi, [rsi + 8]
+                sub             rcx, 1
+.loop:
+                test            rcx, rcx
+                jz              .end
+                mov             rax, [rsi]
+                mov             [rdi], rax
+                sub             rsi, 8
+                sub             rdi, 8
+                dec             rcx
+                jmp             .loop
+
+.end:
+                xor             rax, rax
+                mov             [rdi], rax
+
+                pop             rcx
+                pop             rsi
+                pop             rdi
+                pop             rax
+                ret
+
+; multiplies long number by a 64-bit unsigned and adds result to another long
 ;    rdi -- address of multiplier #1 (long number)
 ;    rcx -- length of long number in qwords
 ;    rbx -- multiplier #2 (64-bit unsigned)
-;    r8  -- number of qwords to left-shift multiplier #2
-;    rdx -- result address (long number)
+;    rdx -- address of summand #2 and result (long number)
 ; modifies:
-;    r9
+;    r9, r10
 ; result:
-;    product is added to long at rdi
-add_long_mul_long_shifted_short:
+;    product is added to long at rdx
+add_long_mul_long_short:
                 push            rax
                 push            rdi
                 push            rcx
                 push            rdx
                 push            rsi
 
-                lea             r9, [rdx + 8 * r8]
-                sub             rcx, r8
-
-                xor             rsi, rsi
+                xor             r9, r9
+                xor             r10, r10
+                mov             rsi, rdx
 .loop:
                 mov             rax, [rdi]
                 mul             rbx
-                add             rax, rsi
+                add             rax, r9
+                adc             rdx, r10
+                mov             r10, 0
+                adc             r10, 0
+                add             [rsi], rax
                 adc             rdx, 0
-                add             [r9], rax
-                adc             rdx, 0
+                adc             r10, 0
+                mov             r9, rdx
+
                 add             rdi, 8
-                add             r9, 8
-                mov             rsi, rdx
+                add             rsi, 8
                 dec             rcx
                 jnz             .loop
 
@@ -127,7 +165,7 @@ add_long_mul_long_shifted_short:
 ;    rdx -- address of result (long number)
 ;    rcx -- length of long numbers in qwords
 ; modifies:
-;    rbx, r8, r9
+;    rbx, r8, r9, r10
 ; result:
 ;    product is written to rdx
 mul_long_long:
@@ -140,12 +178,12 @@ mul_long_long:
                 call            set_zero
                 pop             rdi
                 mov             rax, rcx
-                xor             r8, r8
+                mov             r8, 1
 
 .loop:
                 mov             rbx, [rsi]
-                call            add_long_mul_long_shifted_short
-                inc             r8
+                call            add_long_mul_long_short
+                call            left_shift_long
                 add             rsi, 8
                 dec             rax
                 jnz             .loop
@@ -217,7 +255,7 @@ is_zero:
                 push            rcx
 
                 xor             rax, rax
-                rep scasq
+                repe scasq
 
                 pop             rcx
                 pop             rdi

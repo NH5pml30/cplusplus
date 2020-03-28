@@ -122,7 +122,7 @@ left_shift_long:
 ;    rbx -- multiplier #2 (64-bit unsigned)
 ;    rdx -- address of summand #2 and result (long number)
 ; modifies:
-;    r9, r10
+;    r9
 ; result:
 ;    product is added to long at rdx
 add_long_mul_long_short:
@@ -132,20 +132,25 @@ add_long_mul_long_short:
                 push            rdx
                 push            rsi
 
-                xor             r9, r9
-                xor             r10, r10
+                xor             r9, r9 ; r9 <= 2^64-2
                 mov             rsi, rdx
 .loop:
                 mov             rax, [rdi]
                 mul             rbx
                 add             rax, r9
-                adc             rdx, r10
-                mov             r10, 0
-                adc             r10, 0
+                adc             rdx, 0
+                ; max: (2^64-1)*(2^64-1) == 2^128 - 2^65 + 1 == 0xfffffffffffffffe'0000000000000001
+                ;                                               ^       rdx      ^ ^      rax     ^
+                ; => always rdx <= 2^64-2, rdx == 2^64-2 => rax <= 1
+                ; carry <= 1
+                ; rdx + carry == 2^64-1 <=> (everything maxed out) <=> rax <= 1 && r9 >= 2^64-rax, but r9 <= 2^64-2 (?!)
+                ; => rdx' <= 2^64-2
+
                 add             [rsi], rax
                 adc             rdx, 0
-                adc             r10, 0
+                ; carry <= 1, rdx <= 2^64-2 => no overflow here
                 mov             r9, rdx
+                ; r9 = rdx <= 2^64-2
 
                 add             rdi, 8
                 add             rsi, 8
@@ -165,7 +170,7 @@ add_long_mul_long_short:
 ;    rdx -- address of result (long number)
 ;    rcx -- length of long numbers in qwords
 ; modifies:
-;    rbx, r8, r9, r10
+;    rbx, r8, r9
 ; result:
 ;    product is written to rdx
 mul_long_long:

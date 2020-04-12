@@ -13,9 +13,6 @@ _start:
                 mov             rdi, rsp
                 lea             rsi, [rsp + LONG_QWORDS_LENGTH * 8]
                 call            sub_long_long
-                mov             rsi, difference_msg
-                mov             rdx, difference_msg_size
-                call            print_string
                 call            write_long
                 call            write_new_line
 
@@ -359,5 +356,4 @@ print_string:
 invalid_char_msg:
                 db              "Invalid character: "
 invalid_char_msg_size: equ             $ - invalid_char_msg
-difference_msg:    db              "Difference: "
-difference_msg_size: equ           $ - difference_msg
+

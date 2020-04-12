@@ -13,9 +13,6 @@ _start:
                 lea             rsi, [rsp + LONG_QWORDS_LENGTH * 8]
                 lea             rdx, [rsp + 2 * LONG_QWORDS_LENGTH * 8]
                 call            mul_long_long
-                mov             rsi, product_msg
-                mov             rdx, product_msg_size
-                call            print_string
                 lea             rdi, [rsp + 2 * LONG_QWORDS_LENGTH * 8]
                 call            write_long
                 call            write_new_line
@@ -451,6 +448,4 @@ print_string:
 invalid_char_msg:
                 db              "Invalid character: "
 invalid_char_msg_size: equ             $ - invalid_char_msg
-product_msg:    db              "Product: "
-product_msg_size: equ           $ - product_msg
 

@@ -12,7 +12,7 @@ void big_integer::iterate(const big_integer &b,
                           std::function<void (place_t &l, place_t r)> action)
 {
   resize(std::max(data.size(), b.data.size()));
-  for (int i = 0; i < data.size(); i++)
+  for (size_t i = 0; i < data.size(); i++)
     action(data[i], i < b.data.size() ? b.data[i] : b.default_place());
 }
 
@@ -72,6 +72,10 @@ big_integer::big_integer(const big_integer &other) : data(other.data)
 }
 
 big_integer::big_integer(int a) : data({(place_t)a})
+{
+}
+
+big_integer::big_integer(place_t place) : data({place})
 {
 }
 
@@ -181,7 +185,7 @@ big_integer & big_integer::operator-=(const big_integer &rhs)
   return *this += -rhs;
 }
 
-big_integer & big_integer::operator*=(place_t other)
+big_integer & big_integer::short_multiply(place_t rhs)
 {
   bool old_sign = sign_bit();
   if (old_sign)
@@ -190,7 +194,7 @@ big_integer & big_integer::operator*=(place_t other)
   place_t carry = 0;
   for (size_t i = 0; i < data.size(); i++)
   {
-    auto [res, new_carry] = mul(data[i], other);
+    auto [res, new_carry] = mul(data[i], rhs);
     bool add_carry = false;
     data[i] = addc(res, carry, add_carry);
     carry = addc(new_carry, place_t{0}, add_carry);
@@ -216,7 +220,10 @@ big_integer & big_integer::operator*=(const big_integer &rhs)
 
   big_integer res = 0;
   for (size_t i = 0; i < right.data.size(); i++)
-    res += (*this * right.data[i]) << ((int)i * PLACE_BITS);
+  {
+    big_integer s = *this;
+    res += s.short_multiply(right.data[i]) << ((int)i * PLACE_BITS);
+  }
   *this = res;
   if (sign)
     *this = - *this;
@@ -253,12 +260,6 @@ big_integer & big_integer::short_divide(place_t rhs, place_t &rem)
   return shrink();
 }
 
-big_integer & big_integer::operator/=(place_t rhs)
-{
-  place_t dummy;
-  return short_divide(rhs, dummy);
-}
-
 big_integer & big_integer::long_divide(const big_integer &rhs, big_integer &rem)
 {
   bool sign = sign_bit() ^ rhs.sign_bit();
@@ -266,13 +267,12 @@ big_integer & big_integer::long_divide(const big_integer &rhs, big_integer &rem)
     *this = - *this;
   const big_integer &right =
     rhs.sign_bit() ? (const big_integer &)(-rhs) : rhs;
-  big_integer rem;
 
   if (right.data.size() == 1)
   {
     place_t r;
     short_divide(rhs.data.front(), r);
-    rem = r;
+    rem = big_integer(r);
   }
   else if (right > *this)
   {
@@ -297,7 +297,10 @@ big_integer & big_integer::operator/=(const big_integer &rhs)
   const big_integer &right =
     rhs.sign_bit() ? (const big_integer &)(-rhs) : rhs;
   if (right.data.size() == 1)
-    *this /= rhs.data.front();
+  {
+    place_t dummy;
+    this->short_divide(rhs.data.front(), dummy);
+  }
   else if (right > *this)
     *this = 0;
   else
@@ -310,12 +313,6 @@ big_integer & big_integer::operator/=(const big_integer &rhs)
 }
 
 big_integer & big_integer::operator%=(const big_integer &rhs)
-{
-  ///
-  return *this;
-}
-
-big_integer & big_integer::operator%=(place_t rhs)
 {
   ///
   return *this;
@@ -340,7 +337,7 @@ big_integer::place_t big_integer::get_or_default(int at) const
 {
   if (at < 0)
     return 0;
-  if (at >= data.size())
+  if ((size_t)at >= data.size())
     return default_place();
   return data[at];
 }
@@ -453,23 +450,6 @@ big_integer operator%(big_integer a, const big_integer &b)
   return a %= b;
 }
 
-big_integer operator*(big_integer a, big_integer::place_t b)
-{
-  return a *= b;
-}
-
-big_integer operator/(big_integer a, big_integer::place_t b)
-{
-  return a /= b;
-}
-
-big_integer::place_t operator%(big_integer a, big_integer::place_t b)
-{
-  big_integer::place_t rem;
-  a.short_divide(b, rem);
-  return rem;
-}
-
 big_integer operator&(big_integer a, const big_integer &b)
 {
   return a &= b;
@@ -557,8 +537,9 @@ std::string to_string(const big_integer &a)
     reverse.push_back('0');
   while (c != 0)
   {
-    reverse.push_back((char)(c % 10 + '0'));
-    c /= 10;
+    big_integer::place_t rem;
+    c.short_divide(10, rem);
+    reverse.push_back((char)((char)rem + '0'));
   }
   if (sgn)
     reverse.push_back('-');

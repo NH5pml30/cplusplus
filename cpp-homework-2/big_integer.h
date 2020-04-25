@@ -32,10 +32,6 @@ public:
   big_integer & operator/=(const big_integer &rhs);
   big_integer & operator%=(const big_integer &rhs);
 
-  big_integer & operator*=(place_t rhs);
-  big_integer & operator/=(place_t rhs);
-  big_integer & operator%=(place_t rhs);
-
   big_integer & operator&=(const big_integer &rhs);
   big_integer & operator|=(const big_integer &rhs);
   big_integer & operator^=(const big_integer &rhs);
@@ -53,10 +49,6 @@ public:
   big_integer & operator--();
   big_integer operator--(int);
 
-  friend big_integer operator*(big_integer a, place_t other);
-  friend big_integer operator/(big_integer a, place_t other);
-  friend place_t operator%(big_integer a, place_t other);
-
   friend bool operator==(const big_integer &a, const big_integer &b);
   friend bool operator!=(const big_integer &a, const big_integer &b);
   friend bool operator<(const big_integer &a, const big_integer &b);
@@ -67,6 +59,9 @@ public:
   friend std::string to_string(const big_integer &a);
 
 private:
+  explicit big_integer(place_t place);
+
+  big_integer & short_multiply(place_t rhs);
   big_integer & long_divide(const big_integer &rhs, big_integer &rem);
   big_integer & short_divide(place_t rhs, place_t &rem);
   big_integer & bit_shift(int bits);
@@ -91,9 +86,6 @@ big_integer operator-(big_integer a, const big_integer &b);
 big_integer operator*(big_integer a, const big_integer &b);
 big_integer operator/(big_integer a, const big_integer &b);
 big_integer operator%(big_integer a, const big_integer &b);
-big_integer operator*(big_integer a, big_integer::place_t other);
-big_integer operator/(big_integer a, big_integer::place_t other);
-big_integer::place_t operator%(big_integer a, big_integer::place_t other);
 
 big_integer operator&(big_integer a, const big_integer &b);
 big_integer operator|(big_integer a, const big_integer &b);

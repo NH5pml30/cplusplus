@@ -22,6 +22,9 @@
 */[Ll]og/
 */[Ll]ogs/
 
+# packages
+*/packages/
+
 # Precompiled Headers
 *.gch
 *.pch

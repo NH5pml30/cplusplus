@@ -216,7 +216,7 @@ big_integer & big_integer::operator*=(const big_integer &rhs)
     *this = - *this;
 
   const big_integer &right =
-    rhs.sign_bit() ? (const big_integer &)(-rhs) : rhs;
+    rhs.sign_bit() ? static_cast<const big_integer &>(-rhs) : rhs;
 
   big_integer res = 0;
   for (size_t i = 0; i < right.data.size(); i++)
@@ -266,7 +266,7 @@ big_integer & big_integer::long_divide(const big_integer &rhs, big_integer &rem)
   if (sign_bit())
     *this = - *this;
   const big_integer &right =
-    rhs.sign_bit() ? (const big_integer &)(-rhs) : rhs;
+    rhs.sign_bit() ? static_cast<const big_integer &>(-rhs) : rhs;
 
   if (right.data.size() == 1)
   {
@@ -274,7 +274,7 @@ big_integer & big_integer::long_divide(const big_integer &rhs, big_integer &rem)
     short_divide(rhs.data.front(), r);
     rem = big_integer(r);
   }
-  else if (right > *this)
+  else if (right.data.size() > data.size())
   {
     rem = *this;
     *this = 0;
@@ -299,9 +299,9 @@ big_integer & big_integer::operator/=(const big_integer &rhs)
   if (right.data.size() == 1)
   {
     place_t dummy;
-    this->short_divide(rhs.data.front(), dummy);
+    short_divide(rhs.data.front(), dummy);
   }
-  else if (right > *this)
+  else if (right.data.size() > data.size())
     *this = 0;
   else
   {

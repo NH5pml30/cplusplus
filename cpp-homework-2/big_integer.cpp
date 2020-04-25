@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cassert>
 #include <iostream>
+#include <sstream>
 
 void big_integer::iterate(const big_integer &b,
                           std::function<void (place_t &l, place_t r)> action)
@@ -58,9 +59,43 @@ big_integer::place_t big_integer::default_place() const
   return ::default_place<place_t>(sign_bit());
 }
 
+template<typename type>
+  bool is_vector_zeroed(const std::vector<type> &v)
+  {
+    for (auto el : v)
+      if (el != 0)
+        return false;
+    return true;
+  }
+
+big_integer & big_integer::correct_sign_bit(bool expected_sign_bit)
+{
+  // invariant does not hold for now
+  // zero always accepted, but can be non-shrinked
+  if (sign_bit() != expected_sign_bit && !(expected_sign_bit && is_vector_zeroed(data)))
+    data.push_back(::default_place<place_t>(expected_sign_bit));
+  return shrink();
+}
+
 void big_integer::resize(size_t new_size)
 {
   data.resize(new_size, default_place());
+}
+
+bool big_integer::make_absolute()
+{
+  bool sign = sign_bit();
+  if (sign)
+    *this = - *this;
+  return sign;
+}
+
+big_integer & big_integer::revert_sign(bool sign)
+{
+  // if *this == 0 nothing changes
+  if (sign_bit() != sign)
+    *this = - *this;
+  return *this;
 }
 
 big_integer::big_integer()
@@ -77,9 +112,15 @@ big_integer::big_integer(int a) : data({(place_t)a})
 
 big_integer::big_integer(place_t place) : data({place})
 {
+  // must be unsigned
+  correct_sign_bit(0);
 }
 
-big_integer::big_integer(std::string const &str)
+big_integer::big_integer(const std::vector<place_t> &data) : data(data)
+{
+}
+
+big_integer::big_integer(const std::string &str)
 {
   auto it = str.cbegin();
   bool is_negated = false;
@@ -94,12 +135,11 @@ big_integer::big_integer(std::string const &str)
 
   for (; it != str.cend(); it++)
   {
-    *this *= 10;
+    short_multiply(10);
     *this += *it - '0';
   }
 
-  if (is_negated)
-    *this = -*this;
+  revert_sign(is_negated);
 }
 
 big_integer::~big_integer()
@@ -109,7 +149,7 @@ big_integer::~big_integer()
 big_integer & big_integer::operator=(const big_integer &other)
 {
   data = other.data;
-  return shrink();
+  return *this;
 }
 
 template<typename type>
@@ -167,8 +207,8 @@ big_integer & big_integer::operator+=(const big_integer &rhs)
   using limit = std::numeric_limits<place_t>;
   bool carry = 0;
   iterate(rhs, [&](place_t &l, place_t r) { l = addc(l, r, carry); });
-  if (old_sign == rhs_sign && old_sign != sign_bit())
-    data.push_back(::default_place<place_t>(old_sign));
+  if (old_sign == rhs_sign)
+    correct_sign_bit(old_sign);
 
   // 1... + 1... => 0... + carry  | new place
   //                1... + carry  |
@@ -187,9 +227,7 @@ big_integer & big_integer::operator-=(const big_integer &rhs)
 
 big_integer & big_integer::short_multiply(place_t rhs)
 {
-  bool old_sign = sign_bit();
-  if (old_sign)
-    *this = - *this;
+  bool old_sign = make_absolute();
 
   place_t carry = 0;
   for (size_t i = 0; i < data.size(); i++)
@@ -201,54 +239,49 @@ big_integer & big_integer::short_multiply(place_t rhs)
   }
   if (carry != 0)
     data.push_back(carry);
-  if (sign_bit())
-    data.push_back(0);
 
-  if (old_sign)
-    *this = - *this;
-  return shrink();
+  correct_sign_bit(0);
+  return revert_sign(old_sign);
 }
 
 big_integer & big_integer::operator*=(const big_integer &rhs)
 {
-  bool sign = sign_bit() ^ rhs.sign_bit();
-  if (sign_bit())
-    *this = - *this;
+  bool sign = make_absolute() ^ rhs.sign_bit();
 
   const big_integer &right =
     rhs.sign_bit() ? static_cast<const big_integer &>(-rhs) : rhs;
 
   big_integer res = 0;
   for (size_t i = 0; i < right.data.size(); i++)
-  {
-    big_integer s = *this;
-    res += s.short_multiply(right.data[i]) << ((int)i * PLACE_BITS);
-  }
-  *this = res;
-  if (sign)
-    *this = - *this;
-  return *this;
+    res += big_integer(*this).short_multiply(right.data[i]) << ((int)i * PLACE_BITS);
+  return (*this = res).revert_sign(sign);
 }
 
-std::pair<uint64_t, uint64_t> div(uint64_t lhs_low, uint64_t lhs_high, uint64_t rhs)
+std::pair<uint64_t, uint32_t> div(uint64_t lhs_low, uint32_t lhs_high, uint32_t rhs)
 {
-  uint64_t r = (lhs_low >> 32) | (lhs_high << 32);
-  uint64_t ans = r / rhs;
-  r = ((r % rhs) << 32) + (lhs_low & 0xFFFFFFFF);
-  ans = (ans << 32) + r / rhs;
-
-  return {ans, lhs_low - ans * rhs};
+  // basic division algorithm in base 2^32 (assuming no overflow)
+  // rem -- dividend two-digit prefix
+  // rhs -- divisor consisting of one digit
+  // ans -- quotient consisting of two digits
+  uint64_t rem = (uint64_t{lhs_high} << 32) | high_bytes(lhs_low);
+  // write high answer digit
+  uint64_t ans = (rem / rhs) << 32;
+  // apply previous step division, consume next digit
+  rem = ((rem % rhs) << 32) | low_bytes(lhs_low);
+  // write low answer digit
+  ans |= rem / rhs;
+  // result ready
+  return {ans, (uint32_t)(rem % rhs)};
 }
 
 std::pair<uint32_t, uint32_t> div(uint32_t lhs_low, uint32_t lhs_high, uint32_t rhs)
 {
   uint64_t lhs = ((uint64_t{lhs_high} << 32) | lhs_low);
-  uint32_t ans = (uint32_t)(lhs / rhs);
-
-  return {ans, (uint32_t)(lhs - uint64_t{ans} * rhs)};
+  return {(uint32_t)(lhs / rhs), (uint32_t)(lhs % rhs)};
 }
 
-big_integer & big_integer::short_divide(place_t rhs, place_t &rem)
+// division by a positive integer that fits into uint32_t
+big_integer & big_integer::short_divide(uint32_t rhs, uint32_t &rem)
 {
   rem = 0;
   for (size_t i = 0; i < data.size(); i++)
@@ -260,61 +293,127 @@ big_integer & big_integer::short_divide(place_t rhs, place_t &rem)
   return shrink();
 }
 
+// operations with 'type' as a composite of 4 parts with equal length
+namespace quarter_base
+{
+  template<typename type>
+    constexpr size_t b_bits = std::numeric_limits<type>::digits / 4;
+  template<typename type>
+    constexpr type b = 1 << b_bits<type>;
+  template<typename type>
+    constexpr type b_mask = b<type> - 1;
+
+  template<typename type>
+    static size_t b_size(const std::vector<type> &v)
+    {
+      size_t res = v.size() * 4;
+      while (res > 1 && b_get(v, res - 1) == 0)
+        res--;
+      return res;
+    }
+  // if at is out of bounds, returns 0
+  template<typename type>
+    static type b_get(const std::vector<type> &v, size_t at)
+    {
+      type p = at / 4 >= v.size() ? 0 : v[at / 4];
+      return (p >> ((at % 4) * b_bits<type>)) & b_mask<type>;
+    }
+  // if at is out of bounds, resize happens
+  template<typename type>
+    void b_set(std::vector<type> &v, size_t at, type digit)
+    {
+      size_t pat = at / 4;
+      if (pat >= v.size())
+        v.resize(pat + 1);
+      v[pat] &= ~(b_mask<type> << ((at % 4) * b_bits<type>));
+      v[pat] |= digit << ((at % 4) * b_bits<type>);
+    }
+}
+
 big_integer & big_integer::long_divide(const big_integer &rhs, big_integer &rem)
 {
-  bool sign = sign_bit() ^ rhs.sign_bit();
-  if (sign_bit())
-    *this = - *this;
+  bool sign = make_absolute() ^ rhs.sign_bit();
+
   const big_integer &right =
     rhs.sign_bit() ? static_cast<const big_integer &>(-rhs) : rhs;
 
-  if (right.data.size() == 1)
+  using namespace quarter_base;
+  // base so that 3-digit numbers fit into place_t
+  constexpr place_t pl_b = b<place_t>;
+  constexpr size_t pl_b_bits = b_bits<place_t>;
+  size_t n = b_size(data), m = b_size(right.data);
+
+  if (m * pl_b_bits <= 32)
   {
-    place_t r;
-    short_divide(rhs.data.front(), r);
-    rem = big_integer(r);
+    // right fits into 32 bits
+    uint32_t r;
+    short_divide((uint32_t)right.data[0], r);
+    // uint32_t fits into place_t
+    rem = big_integer(place_t{r});
   }
-  else if (right.data.size() > data.size())
+  else if (m > n)
   {
+    // divisor is greater than dividend, quotient is 0, remainder is dividend
     rem = *this;
     *this = 0;
   }
   else
   {
+    // 2 <= m <= n -- true
 
+    // copy operands: starting remainder is this, divisor is right
+    rem = *this;
+    big_integer d = right;
+
+    // normalize divisor d (largest place >= b / 2)
+    place_t f = pl_b / (b_get(d.data, b_size(d.data) - 1) + 1);
+    rem.short_multiply(f);
+    d.short_multiply(f);
+
+    // 2 leading digits of divisor for quotient digits estimate
+    place_t d2 = b_get(d.data, m - 1) * pl_b + b_get(d.data, m - 2);
+    // compute quotient digits
+    data.clear();
+    for (size_t ki = 0; ki <= n - m; ki++)
+    {
+      int k = (int)(n - m - ki);
+      place_t
+        // first, count 3 leading digits of remainder
+        r3 = (b_get(rem.data, k + m) * pl_b + b_get(rem.data, k + m - 1)) * pl_b + b_get(rem.data, k + m - 2),
+        // obtain k-th digit estimate
+        qt = std::min(r3 / d2, pl_b - 1);
+      // count result with estimate
+      big_integer dq = big_integer(d).short_multiply(qt) <<= k * pl_b_bits;
+      if (rem < dq)
+      {
+        // wrong, correct estimate
+        qt--;
+        dq = big_integer(d).short_multiply(qt) <<= k * pl_b_bits;
+      }
+      // set digit in quotient
+      b_set(data, k, qt);
+      // subtract current result from remainder
+      rem -= dq;
+    }
+    uint32_t dummy;
+    rem.short_divide((uint32_t)f, dummy); // f < b == 2^(PLACE_BITS/4) <= 2^16
+    correct_sign_bit(0);
   }
+  revert_sign(sign);
   if (sign)
-  {
-    *this = - *this;
     rem = -rem;
-  }
   return *this;
 }
 
 big_integer & big_integer::operator/=(const big_integer &rhs)
 {
-  bool sign = sign_bit() ^ rhs.sign_bit();
-  const big_integer &right =
-    rhs.sign_bit() ? (const big_integer &)(-rhs) : rhs;
-  if (right.data.size() == 1)
-  {
-    place_t dummy;
-    short_divide(rhs.data.front(), dummy);
-  }
-  else if (right.data.size() > data.size())
-    *this = 0;
-  else
-  {
-
-  }
-  if (sign)
-    *this = - *this;
-  return *this;
+  big_integer dummy;
+  return long_divide(rhs, dummy);
 }
 
 big_integer & big_integer::operator%=(const big_integer &rhs)
 {
-  ///
+  big_integer(*this).long_divide(rhs, *this);
   return *this;
 }
 
@@ -360,6 +459,7 @@ big_integer & big_integer::bit_shift(int rhs)
   // [lsrc][rsrc]
   //       <-> bits
   //    [plce]
+  bool sign = sign_bit();
   int places = rhs / PLACE_BITS, bits = rhs % PLACE_BITS;
   if (rhs < 0 && bits != 0)
     places--, bits += PLACE_BITS;
@@ -379,7 +479,7 @@ big_integer & big_integer::bit_shift(int rhs)
     }
   }
   data.swap(new_data);
-  return shrink();
+  return correct_sign_bit(sign);
 }
 
 big_integer big_integer::operator+() const
@@ -479,22 +579,22 @@ int big_integer::sign() const
 {
   if (sign_bit())
     return -1;
-  for (size_t i = 0; i < data.size(); i++)
-    if (data[i] != 0)
-      return 1;
-  return 0;
+  if (data.size() == 1 && data[0] == 0)
+    return 0;
+  return 1;
 }
 
 int big_integer::compare(const big_integer &l, const big_integer &r)
 {
-  if (l.data.size() < r.data.size())
-    return -1;
-  int lsign = l.sign(), rsign = r.sign();
+  bool lsign = l.sign_bit(), rsign = r.sign_bit();
   if (lsign != rsign)
-    return lsign - rsign;
+    return rsign - lsign;
+  int sign = lsign ? -1 : 1;
+  if (l.data.size() != r.data.size())
+    return l.data.size() > r.data.size() ? sign : -sign;
   for (size_t i = 0; i < l.data.size(); i++)
     if (place_t a = l.data[l.data.size() - i - 1], b = r.data[r.data.size() - i - 1]; a != b)
-      return a > b ? lsign : -lsign;
+      return a > b ? sign : -sign;
   return 0;
 }
 
@@ -530,14 +630,14 @@ bool operator>=(const big_integer &a, const big_integer &b)
 
 std::string to_string(const big_integer &a)
 {
-  bool sgn = a.sign_bit();
+  big_integer c = a;
+  bool sgn = c.make_absolute();
   std::vector<char> reverse;
-  big_integer c = (sgn ? -a : a);
   if (c == 0)
     reverse.push_back('0');
   while (c != 0)
   {
-    big_integer::place_t rem;
+    uint32_t rem;
     c.short_divide(10, rem);
     reverse.push_back((char)((char)rem + '0'));
   }

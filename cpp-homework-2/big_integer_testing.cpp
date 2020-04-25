@@ -540,7 +540,6 @@ TEST(correctness, mul_long_pow2)
     EXPECT_EQ(b * b, c);
 }
 
-/*
 TEST(correctness, div_long)
 {
     big_integer a("10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
@@ -576,7 +575,6 @@ TEST(correctness, negation_long)
     EXPECT_EQ(-a, c);
     EXPECT_EQ(a, -c);
 }
-*/
 
 TEST(correctness, shl_long)
 {
@@ -628,7 +626,6 @@ namespace
     }
 }
 
-/*
 TEST(correctness, mul_div_randomized)
 {
     for (unsigned itn = 0; itn != number_of_iterations; ++itn)
@@ -651,7 +648,6 @@ TEST(correctness, mul_div_randomized)
         EXPECT_TRUE(accumulator == multipliers[0]);
     }
 }
-*/
 
 namespace
 {
@@ -698,7 +694,6 @@ namespace
     }
 }
 
-/*
 TEST(correctness, mul_merge_randomized)
 {
     for (unsigned itn = 0; itn != number_of_iterations; ++itn)
@@ -713,7 +708,6 @@ TEST(correctness, mul_merge_randomized)
         EXPECT_TRUE(a == b);
     }
 }
-*/
 
 namespace
 {
@@ -731,7 +725,6 @@ namespace
     }
 }
 
-/*
 TEST(correctness, div_randomized)
 {
     for (size_t itn = 0; itn != number_of_iterations * number_of_multipliers; ++itn)
@@ -745,4 +738,3 @@ TEST(correctness, div_randomized)
         EXPECT_LT(residue, divisor);
     }
 }
-*/

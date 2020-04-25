@@ -13,7 +13,11 @@
 class big_integer
 {
 private:
+  // digit type -- must be either uint32_t or uint64_t
   using place_t = uint64_t;
+  // invariant:
+  // sign -- highest bit in last place (1 -- negative)
+  // data has the smallest size representing the same number (zero is represented by one place = 0)
   std::vector<place_t> data = {place_t{0}};
   static constexpr int PLACE_BITS = std::numeric_limits<place_t>::digits;
 
@@ -60,12 +64,19 @@ public:
 
 private:
   explicit big_integer(place_t place);
+  explicit big_integer(const std::vector<place_t> &data);
 
   big_integer & short_multiply(place_t rhs);
   big_integer & long_divide(const big_integer &rhs, big_integer &rem);
-  big_integer & short_divide(place_t rhs, place_t &rem);
+  big_integer & short_divide(uint32_t rhs, uint32_t &rem);
   big_integer & bit_shift(int bits);
 
+  bool make_absolute();
+  big_integer & revert_sign(bool sign);
+
+  int sign() const;
+  bool sign_bit() const;
+  big_integer & correct_sign_bit(bool expected_sign_bit);
   big_integer & shrink();
   void resize(size_t new_size);
   place_t default_place() const;
@@ -74,11 +85,7 @@ private:
   void iterate(const big_integer &b, std::function<void (place_t &l, place_t r)> action);
   big_integer & place_wise(const big_integer &b, std::function<place_t (place_t l, place_t r)> action);
 
-  int sign() const;
-  bool sign_bit() const;
-
   static int compare(const big_integer &l, const big_integer &r);
-
 };
 
 big_integer operator+(big_integer a, const big_integer &b);

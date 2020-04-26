@@ -13,8 +13,8 @@
 class big_integer
 {
 private:
-  // digit type -- must be either uint32_t or uint64_t
-  using place_t = uint64_t;
+  // digit type -- only uint32_t supported because of division
+  using place_t = uint32_t;
   // invariant:
   // sign -- highest bit in last place (1 -- negative)
   // data has the smallest size representing the same number (zero is represented by one place = 0)
@@ -68,7 +68,7 @@ private:
 
   big_integer & short_multiply(place_t rhs);
   big_integer & long_divide(const big_integer &rhs, big_integer &rem);
-  big_integer & short_divide(uint32_t rhs, uint32_t &rem);
+  big_integer & short_divide(place_t rhs, place_t &rem);
   big_integer & bit_shift(int bits);
 
   bool make_absolute();
@@ -78,6 +78,8 @@ private:
   bool sign_bit() const;
   big_integer & correct_sign_bit(bool expected_sign_bit);
   big_integer & shrink();
+  size_t size() const;
+  size_t unsigned_size() const;
   void resize(size_t new_size);
   place_t default_place() const;
   place_t get_or_default(int at) const;

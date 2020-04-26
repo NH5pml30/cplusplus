@@ -59,6 +59,18 @@ big_integer::place_t big_integer::default_place() const
   return ::default_place<place_t>(sign_bit());
 }
 
+size_t big_integer::size() const
+{
+  return data.size();
+}
+
+size_t big_integer::unsigned_size() const
+{
+  if (sign_bit())
+    return 0;
+  return std::max(size_t{1}, data.size() - (data.back() == 0));
+}
+
 template<typename type>
   bool is_vector_zeroed(const std::vector<type> &v)
   {
@@ -257,79 +269,119 @@ big_integer & big_integer::operator*=(const big_integer &rhs)
   return (*this = res).revert_sign(sign);
 }
 
-std::pair<uint64_t, uint32_t> div(uint64_t lhs_low, uint32_t lhs_high, uint32_t rhs)
+static bool less_3_digits(uint64_t lhs_low, uint32_t lhs_high,
+                          uint64_t rhs_low, uint32_t rhs_high)
 {
-  // basic division algorithm in base 2^32 (assuming no overflow)
-  // rem -- dividend two-digit prefix
-  // rhs -- divisor consisting of one digit
-  // ans -- quotient consisting of two digits
-  uint64_t rem = (uint64_t{lhs_high} << 32) | high_bytes(lhs_low);
-  // write high answer digit
-  uint64_t ans = (rem / rhs) << 32;
-  // apply previous step division, consume next digit
-  rem = ((rem % rhs) << 32) | low_bytes(lhs_low);
-  // write low answer digit
-  ans |= rem / rhs;
-  // result ready
-  return {ans, (uint32_t)(rem % rhs)};
+  return lhs_high < rhs_high || lhs_high == rhs_high && lhs_low < rhs_low;
 }
 
-std::pair<uint32_t, uint32_t> div(uint32_t lhs_low, uint32_t lhs_high, uint32_t rhs)
+static uint64_t get_3_digits(uint64_t low, uint32_t high, int at)
+{
+  switch (at)
+  {
+  case -1:
+    return high;
+  case 0:
+    return (uint64_t{high} << 16) | (low >> 48);
+  case 1:
+    return (uint64_t{high << 16} << 16) | (low >> 32);
+  }
+  return 0;
+}
+
+static std::pair<uint64_t, uint32_t> sub_5_digits(uint64_t lhs_low, uint32_t lhs_high,
+                                                  uint64_t rhs_low, uint16_t rhs_high, int at)
+{
+  if (at == 0)
+  {
+    uint64_t l64 = (uint64_t{lhs_high & 0x0000'FFFF} << 48)| (lhs_low >> 16);
+    bool borrow = 0;
+    l64 = addc(l64, ~rhs_low + 1, borrow);
+    uint16_t l16 = lhs_high >> 16;
+    l16 -= borrow;
+    borrow = 0;
+    l16 = addc(l16, (uint16_t)(~rhs_high + 1), borrow);
+    lhs_high = (uint32_t{l16} << 16) | (uint32_t)(l64 >> 48);
+    lhs_low = (l64 << 16) | (lhs_low & 0x0000'FFFF);
+  }
+  else
+  {
+    bool borrow = 0;
+    lhs_low = addc(lhs_low, ~rhs_low + 1, borrow);
+    lhs_high -= borrow;
+    borrow = 0;
+    lhs_high = addc(lhs_high, (uint32_t)(~rhs_high + 1), borrow);
+  }
+  return {lhs_low, lhs_high};
+}
+
+static std::pair<uint32_t, uint64_t> div3_2(uint32_t lhs_low, uint32_t lhs_med, uint32_t lhs_high,
+                                            uint32_t rhs_low, uint32_t rhs_high)
+{
+  // divide in base 2^16 with trial digits on prefixes
+  uint64_t
+    r_low64 = (uint64_t{lhs_med} << 32) | lhs_low,
+    d = (uint64_t{rhs_high} << 32) | rhs_low;
+  uint32_t
+    r_high = lhs_high,
+    d2 = rhs_high;
+
+  if (get_3_digits(r_low64, r_high, -1) / d2 != 0)
+    // overflow
+    return {std::numeric_limits<uint32_t>::max(), 0};
+
+  // high trial digit
+  uint16_t qt1 = (uint16_t)(get_3_digits(r_low64, r_high, 0) / d2);
+  auto dq = mul(d, uint64_t{qt1});
+  if (less_3_digits(r_low64, r_high, dq.first, low_bytes(dq.second)))
+  {
+    // correct estimate
+    qt1--;
+    dq = mul(d, uint64_t{qt1});
+  }
+  // subtract from remainder
+  auto rmdq = sub_5_digits(r_low64, r_high, dq.first, (uint16_t)dq.second, 0);
+  r_low64 = rmdq.first;
+  r_high = rmdq.second;
+
+  // low trial digit
+  uint16_t qt2 = (uint16_t)(get_3_digits(r_low64, r_high, 1) / d2);
+  dq = mul(d, uint64_t{qt2});
+  if (less_3_digits(r_low64, r_high, dq.first, low_bytes(dq.second)))
+  {
+    // correct estimate
+    qt2--;
+    dq = mul(d, uint64_t{qt2});
+  }
+  // subtract from remainder
+  rmdq = sub_5_digits(r_low64, r_high, dq.first, (uint16_t)dq.second, 1);
+  r_low64 = rmdq.first;
+  r_high = rmdq.second;
+
+  return {(uint32_t{qt1} << 16) | qt2, r_low64};
+}
+
+static std::pair<uint32_t, uint32_t> div2_1(uint32_t lhs_low, uint32_t lhs_high, uint32_t rhs)
 {
   uint64_t lhs = ((uint64_t{lhs_high} << 32) | lhs_low);
   return {(uint32_t)(lhs / rhs), (uint32_t)(lhs % rhs)};
 }
 
-// division by a positive integer that fits into uint32_t
-big_integer & big_integer::short_divide(uint32_t rhs, uint32_t &rem)
+// division by a positive integer that fits into place_t
+// requires place_t to be uint32_t because of div2_1
+big_integer & big_integer::short_divide(place_t rhs, place_t &rem)
 {
   rem = 0;
   for (size_t i = 0; i < data.size(); i++)
   {
-    auto [res, new_rem] = div(data[data.size() - i - 1], rem, rhs);
+    auto [res, new_rem] = div2_1(data[data.size() - i - 1], rem, rhs);
     data[data.size() - i - 1] = res;
     rem = new_rem;
   }
   return shrink();
 }
 
-// operations with 'type' as a composite of 4 parts with equal length
-namespace quarter_base
-{
-  template<typename type>
-    constexpr size_t b_bits = std::numeric_limits<type>::digits / 4;
-  template<typename type>
-    constexpr type b = 1 << b_bits<type>;
-  template<typename type>
-    constexpr type b_mask = b<type> - 1;
-
-  template<typename type>
-    static size_t b_size(const std::vector<type> &v)
-    {
-      size_t res = v.size() * 4;
-      while (res > 1 && b_get(v, res - 1) == 0)
-        res--;
-      return res;
-    }
-  // if at is out of bounds, returns 0
-  template<typename type>
-    static type b_get(const std::vector<type> &v, size_t at)
-    {
-      type p = at / 4 >= v.size() ? 0 : v[at / 4];
-      return (p >> ((at % 4) * b_bits<type>)) & b_mask<type>;
-    }
-  // if at is out of bounds, resize happens
-  template<typename type>
-    void b_set(std::vector<type> &v, size_t at, type digit)
-    {
-      size_t pat = at / 4;
-      if (pat >= v.size())
-        v.resize(pat + 1);
-      v[pat] &= ~(b_mask<type> << ((at % 4) * b_bits<type>));
-      v[pat] |= digit << ((at % 4) * b_bits<type>);
-    }
-}
-
+// requires place_t to be uint32_t because of short_divide, div2_1 & div3_2
 big_integer & big_integer::long_divide(const big_integer &rhs, big_integer &rem)
 {
   bool sign = make_absolute() ^ rhs.sign_bit();
@@ -337,19 +389,13 @@ big_integer & big_integer::long_divide(const big_integer &rhs, big_integer &rem)
   const big_integer &right =
     rhs.sign_bit() ? static_cast<const big_integer &>(-rhs) : rhs;
 
-  using namespace quarter_base;
-  // base so that 3-digit numbers fit into place_t
-  constexpr place_t pl_b = b<place_t>;
-  constexpr size_t pl_b_bits = b_bits<place_t>;
-  size_t n = b_size(data), m = b_size(right.data);
+  size_t n = unsigned_size(), m = right.unsigned_size();
 
-  if (m * pl_b_bits <= 32)
+  if (m == 1)
   {
-    // right fits into 32 bits
-    uint32_t r;
-    short_divide((uint32_t)right.data[0], r);
-    // uint32_t fits into place_t
-    rem = big_integer(place_t{r});
+    place_t r;
+    short_divide(right.data[0], r);
+    rem = big_integer(r);
   }
   else if (m > n)
   {
@@ -359,44 +405,51 @@ big_integer & big_integer::long_divide(const big_integer &rhs, big_integer &rem)
   }
   else
   {
+    // divide with base 2^PLACE_BITS
     // 2 <= m <= n -- true
 
     // copy operands: starting remainder is this, divisor is right
     rem = *this;
     big_integer d = right;
 
-    // normalize divisor d (largest place >= b / 2)
-    place_t f = pl_b / (b_get(d.data, b_size(d.data) - 1) + 1);
+    // normalize divisor d (largest place >= base / 2)
+    place_t f = d.data[m - 1] == std::numeric_limits<place_t>::max() ?
+      1 : div2_1(0, 1, d.data[m - 1] + 1).first;
     rem.short_multiply(f);
     d.short_multiply(f);
 
     // 2 leading digits of divisor for quotient digits estimate
-    place_t d2 = b_get(d.data, m - 1) * pl_b + b_get(d.data, m - 2);
+    place_t
+      d2_high = d.data[m - 1],
+      d2_low = d.data[m - 2];
     // compute quotient digits
     data.clear();
+    data.resize(n - m + 1);
     for (size_t ki = 0; ki <= n - m; ki++)
     {
       int k = (int)(n - m - ki);
       place_t
         // first, count 3 leading digits of remainder
-        r3 = (b_get(rem.data, k + m) * pl_b + b_get(rem.data, k + m - 1)) * pl_b + b_get(rem.data, k + m - 2),
+        r3_high = k + m >= rem.data.size() ? 0 : rem.data[k + m],
+        r3_med = k + m - 1 >= rem.data.size() ? 0 : rem.data[k + m - 1],
+        r3_low = k + m - 2 >= rem.data.size() ? 0 : rem.data[k + m - 2],
         // obtain k-th digit estimate
-        qt = std::min(r3 / d2, pl_b - 1);
+        qt = div3_2(r3_low, r3_med, r3_high, d2_low, d2_high).first;
       // count result with estimate
-      big_integer dq = big_integer(d).short_multiply(qt) <<= k * pl_b_bits;
+      big_integer dq = big_integer(d).short_multiply(qt) <<= k * PLACE_BITS;
       if (rem < dq)
       {
         // wrong, correct estimate
         qt--;
-        dq = big_integer(d).short_multiply(qt) <<= k * pl_b_bits;
+        dq = big_integer(d).short_multiply(qt) <<= k * PLACE_BITS;
       }
       // set digit in quotient
-      b_set(data, k, qt);
+      data[k] = qt;
       // subtract current result from remainder
       rem -= dq;
     }
-    uint32_t dummy;
-    rem.short_divide((uint32_t)f, dummy); // f < b == 2^(PLACE_BITS/4) <= 2^16
+    place_t dummy;
+    rem.short_divide(f, dummy);
     correct_sign_bit(0);
   }
   revert_sign(sign);

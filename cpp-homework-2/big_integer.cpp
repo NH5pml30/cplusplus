@@ -266,7 +266,7 @@ big_integer & big_integer::operator*=(const big_integer &rhs)
   big_integer res = 0;
   for (size_t i = 0; i < right.data.size(); i++)
     res += big_integer(*this).short_multiply(right.data[i]) << ((int)i * PLACE_BITS);
-  return (*this = res).revert_sign(sign);
+  return *this = res.revert_sign(sign);
 }
 
 static bool less_3_digits(uint64_t lhs_low, uint32_t lhs_high,

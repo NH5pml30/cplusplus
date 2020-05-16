@@ -73,8 +73,8 @@ void destroy_at(T *data, size_t at)
 template<typename T>
 void destroy_n(T *data, size_t begin, size_t end)
 {
-  for (size_t i = begin; i < end; i++)
-    destroy_at(data, i);
+  for (size_t i = end; i > begin; i--)
+    destroy_at(data, i - 1);
 }
 
 template<typename T>
@@ -95,8 +95,7 @@ void copy_construct_n(T *data, size_t begin, size_t end, T *other, size_t other_
   }
   catch (...)
   {
-    for (size_t j = 0; j < i; j++)
-      destroy_at(data, begin + j);
+    destroy_n(data, begin, begin + i);
     throw;
   }
 }

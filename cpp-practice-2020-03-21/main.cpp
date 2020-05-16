@@ -34,7 +34,13 @@ int main(int argc, char *argv[])
 
   size_t
     len = strlen(argv[1]),
-    *p = new size_t[len];
+    *p = (size_t *)malloc(sizeof(size_t) * len);
+  if (!p)
+  {
+    perror("malloc failed");
+    fclose(f);
+    return EXIT_FAILURE;
+  }
   prefix(argv[1], len, p);
   bool result = false;
   size_t k = 0;
@@ -49,6 +55,7 @@ int main(int argc, char *argv[])
       if (ferror(f))
       {
         perror("fread failed");
+        free(p);
         fclose(f);
         return EXIT_FAILURE;
       }
@@ -70,7 +77,7 @@ int main(int argc, char *argv[])
     }
   } while (!result);
 
-  delete[] p;
+  free(p);
   fclose(f);
 
   std::cout << std::boolalpha << result << std::endl;

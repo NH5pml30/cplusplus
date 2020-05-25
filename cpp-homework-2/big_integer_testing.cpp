@@ -119,6 +119,15 @@ TEST(correctness, add)
     EXPECT_TRUE(a == 25);
 }
 
+////////
+TEST(correctness, add_pie)
+{
+  big_integer a = -1;
+  big_integer b = 2;
+
+  EXPECT_TRUE(a + b == 1);
+}
+
 TEST(correctness, add_signed)
 {
     big_integer a = 5;
@@ -204,7 +213,6 @@ TEST(correctness, mul_return_value)
     EXPECT_EQ(a, 20);
 }
 
-/*
 TEST(correctness, div_)
 {
     big_integer a = 20;
@@ -275,7 +283,6 @@ TEST(correctness, div_return_value)
     (a /= b) /= b;
     EXPECT_EQ(a, 25);
 }
-*/
 
 TEST(correctness, unary_plus)
 {

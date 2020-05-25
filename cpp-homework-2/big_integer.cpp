@@ -41,6 +41,7 @@ bool big_integer::sign_bit() const
 
 big_integer & big_integer::shrink()
 {
+  // make sure invariant holds
   while (data.size() > 1 && data.back() == default_place() &&
          sign_bit() == ::sign_bit(data[data.size() - 2]))
     // while last place is default and no change in sign
@@ -80,12 +81,25 @@ template<typename type>
     return true;
   }
 
-big_integer & big_integer::correct_sign_bit(bool expected_sign_bit)
+#include <optional>
+
+big_integer &big_integer::correct_sign_bit(bool expected_sign_bit, std::optional<place_t> carry)
 {
   // invariant does not hold for now
   // zero always accepted, but can be non-shrinked
-  if (sign_bit() != expected_sign_bit && !(expected_sign_bit && is_vector_zeroed(data)))
-    data.push_back(::default_place<place_t>(expected_sign_bit));
+  try
+  {
+    if (carry.has_value())
+      data.push_back(carry.value());
+    if (sign_bit() != expected_sign_bit && !(expected_sign_bit && is_vector_zeroed(data)))
+      data.push_back(::default_place<place_t>(expected_sign_bit));
+  }
+  catch (...)
+  {
+    // exception thrown, but invariant may not hold
+    shrink();
+    throw;
+  }
   return shrink();
 }
 
@@ -249,10 +263,7 @@ big_integer & big_integer::short_multiply(place_t rhs)
     data[i] = addc(res, carry, add_carry);
     carry = addc(new_carry, place_t{0}, add_carry);
   }
-  if (carry != 0)
-    data.push_back(carry);
-
-  correct_sign_bit(0);
+  correct_sign_bit(0, carry == 0 ? std::optional<place_t>() : carry);
   return revert_sign(old_sign);
 }
 
@@ -384,7 +395,7 @@ big_integer & big_integer::short_divide(place_t rhs, place_t &rem)
 // requires place_t to be uint32_t because of short_divide, div2_1 & div3_2
 big_integer & big_integer::long_divide(const big_integer &rhs, big_integer &rem)
 {
-  bool sign = make_absolute() ^ rhs.sign_bit();
+  bool this_sign = make_absolute(), sign = this_sign ^ rhs.sign_bit();
 
   const big_integer &right =
     rhs.sign_bit() ? static_cast<const big_integer &>(-rhs) : rhs;
@@ -453,8 +464,7 @@ big_integer & big_integer::long_divide(const big_integer &rhs, big_integer &rem)
     correct_sign_bit(0);
   }
   revert_sign(sign);
-  if (sign)
-    rem = -rem;
+  rem.revert_sign(this_sign);
   return *this;
 }
 

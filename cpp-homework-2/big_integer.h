@@ -9,6 +9,7 @@
 #include <vector>
 #include <string>
 #include <functional>
+#include <optional>
 
 class big_integer
 {
@@ -76,7 +77,7 @@ private:
 
   int sign() const;
   bool sign_bit() const;
-  big_integer & correct_sign_bit(bool expected_sign_bit);
+  big_integer & correct_sign_bit(bool expected_sign_bit, std::optional<place_t> carry = {});
   big_integer & shrink();
   size_t size() const;
   size_t unsigned_size() const;

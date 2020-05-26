@@ -13,12 +13,13 @@
 
 class big_integer
 {
+/* all public functions provide weak exception guarantee (invariant holds) */
 private:
   // digit type -- only uint32_t supported because of division
   using place_t = uint32_t;
   // invariant:
   // sign -- highest bit in last place (1 -- negative)
-  // data has the smallest size representing the same number (zero is represented by one place = 0)
+  // data has the smallest size representing the same number in 2's complement form
   std::vector<place_t> data = {place_t{0}};
   static constexpr int PLACE_BITS = std::numeric_limits<place_t>::digits;
 
@@ -65,30 +66,37 @@ public:
 
 private:
   explicit big_integer(place_t place);
-  explicit big_integer(const std::vector<place_t> &data);
 
+  /* Operators */
   big_integer & short_multiply(place_t rhs);
   big_integer & long_divide(const big_integer &rhs, big_integer &rem);
   big_integer & short_divide(place_t rhs, place_t &rem);
   big_integer & bit_shift(int bits);
+  static int compare(const big_integer &l, const big_integer &r);
 
+  /* Invariant-changing functions */
+  // corrects sign & invariant
+  big_integer & correct_sign_bit(bool expected_sign_bit, std::optional<place_t> carry = {});
+  // corrects invariant
+  big_integer & shrink();
+  // destroys invariant, inflating data
+  void resize(size_t new_size);
+
+  /* Non-invariant-changing function */
   bool make_absolute();
   big_integer & revert_sign(bool sign);
 
   int sign() const;
   bool sign_bit() const;
-  big_integer & correct_sign_bit(bool expected_sign_bit, std::optional<place_t> carry = {});
-  big_integer & shrink();
+
   size_t size() const;
   size_t unsigned_size() const;
-  void resize(size_t new_size);
   place_t default_place() const;
   place_t get_or_default(int at) const;
 
   void iterate(const big_integer &b, std::function<void (place_t &l, place_t r)> action);
-  big_integer & place_wise(const big_integer &b, std::function<place_t (place_t l, place_t r)> action);
-
-  static int compare(const big_integer &l, const big_integer &r);
+  big_integer & place_wise(const big_integer &b,
+                           std::function<place_t (place_t l, place_t r)> action);
 };
 
 big_integer operator+(big_integer a, const big_integer &b);

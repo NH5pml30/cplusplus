@@ -119,15 +119,6 @@ TEST(correctness, add)
     EXPECT_TRUE(a == 25);
 }
 
-////////
-TEST(correctness, add_pie)
-{
-  big_integer a = -1;
-  big_integer b = 2;
-
-  EXPECT_TRUE(a + b == 1);
-}
-
 TEST(correctness, add_signed)
 {
     big_integer a = 5;
@@ -647,7 +638,7 @@ TEST(correctness, mul_div_randomized)
         for (size_t i = 0; i != number_of_multipliers; ++i)
             accumulator *= multipliers[i];
 
-        std::shuffle(multipliers.begin(), multipliers.end(), std::mt19937(std::random_device()()));
+        std::shuffle(multipliers.begin(), multipliers.end(), std::random_device());
 
         for (size_t i = 1; i != number_of_multipliers; ++i)
             accumulator /= multipliers[i];

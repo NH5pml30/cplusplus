@@ -9,6 +9,10 @@
 
 #include "big_integer.h"
 
+/***
+ * Shared buffer (copy-on-write optimization) implementation
+ ***/
+
 big_integer::shared_buffer * big_integer::shared_buffer::allocate_buffer(size_t capacity)
 {
   // make space for possible carry and sign place
@@ -34,6 +38,10 @@ void big_integer::shared_buffer::release(shared_buffer *self)
   if (--self->ref_count == 0)
     operator delete(self);
 }
+
+/***
+ * Buffer (small-object optimization) implementation
+ ***/
 
 void big_integer::buffer::allocate(size_t new_size, place_t default_val)
 {
@@ -240,6 +248,11 @@ big_integer::buffer::~buffer()
     shared_buffer::release(dynamic_data);
 }
 
+/***
+ * Big integer implementation
+ ***/
+
+/* Basis for big integer functions */
 template<typename type>
   bool sign_bit(type val) { return val >> (std::numeric_limits<type>::digits - 1); }
 
@@ -934,7 +947,7 @@ std::string to_string(const big_integer &a)
   return std::string(reverse.rbegin(), reverse.rend());
 }
 
-std::ostream &operator<<(std::ostream &s, const big_integer &a)
+std::ostream & operator<<(std::ostream &s, const big_integer &a)
 {
   return s << to_string(a);
 }

@@ -32,16 +32,13 @@ private:
     static void release(shared_buffer *self);
   };
 
-  struct buffer
+  class buffer
   {
   private:
     union
     {
       place_t static_data;
       shared_buffer *dynamic_data;
-      struct foo
-      {
-      };
     };
     size_t size_ = 0;
 
@@ -149,6 +146,7 @@ private:
   place_t default_place() const;
   place_t get_or_default(int at) const;
 
+  /* Useful iterating functions */
   void iterate(const big_integer &b, const std::function<place_t (place_t, place_t)> &action);
   void iterate(const std::function<place_t (place_t)> &action);
   void iterate_r(const std::function<place_t (place_t)> &action);
@@ -179,6 +177,6 @@ bool operator<=(const big_integer &a, const big_integer &b);
 bool operator>=(const big_integer &a, const big_integer &b);
 
 std::string to_string(const big_integer &a);
-std::ostream &operator<<(std::ostream &s, const big_integer &a);
+std::ostream & operator<<(std::ostream &s, const big_integer &a);
 
 #endif // BIG_INTEGER_H

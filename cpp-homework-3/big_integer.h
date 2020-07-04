@@ -9,75 +9,27 @@
 #include <vector>
 #include <string>
 #include <functional>
-#include <optional>
-#include <variant>
 
-class big_integer
+#include "optimized_buffer.h"
+
+struct big_integer
 {
 /* all public functions provide weak exception guarantee (invariant holds) */
 private:
   // digit type -- only uint32_t supported because of division
   using place_t = uint32_t;
+  // reserve 2 places for sign & carry
+  using storage_t = big_int_util::optimized_buffer;
 
   // invariant:
   // sign -- highest bit in last place (1 -- negative)
   // data has the smallest size representing the same number in 2's complement form
-  struct shared_buffer
-  {
-    size_t ref_count, capacity;
-    place_t data[];
-
-    static shared_buffer *allocate_buffer(size_t capacity);
-    static shared_buffer * add_ref(shared_buffer *self);
-    static void release(shared_buffer *self);
-  };
-
-  class buffer
-  {
-  private:
-    union
-    {
-      place_t static_data;
-      shared_buffer *dynamic_data;
-    };
-    size_t size_ = 0;
-
-    void allocate(size_t new_size, place_t default_val = place_t{0});
-    void allocate(size_t new_size, const place_t *old_data, place_t default_val = place_t{0});
-    void unshare_resize(size_t new_size = -1, place_t default_val = place_t{0});
-
-  public:
-    buffer(size_t size, place_t default_val);
-    explicit buffer(const std::vector<place_t> &vec);
-    buffer(const buffer &other);
-    buffer & operator=(const buffer &other);
-    void swap(buffer &other);
-    size_t size() const;
-    void inflate(size_t new_size, place_t default_val);
-    place_t back() const;
-    place_t & back();
-    void push_back(place_t val);
-    void pop_back();
-    operator const place_t *() const;
-    operator place_t *();
-    place_t * data();
-    const place_t * data() const;
-
-    place_t * begin();
-    const place_t * begin() const;
-    place_t * end();
-    const place_t * end() const;
-
-    bool operator==(const buffer &other) const;
-    bool operator!=(const buffer &other) const;
-
-    ~buffer();
-  } data;
+  storage_t data;
   static constexpr int PLACE_BITS = std::numeric_limits<place_t>::digits;
 
 public:
   big_integer();
-  big_integer(const big_integer &other);
+  big_integer(const big_integer &other) = default;
   big_integer(int a);
   explicit big_integer(std::string const &str);
   ~big_integer();
@@ -128,7 +80,7 @@ private:
 
   /* Invariant-changing functions */
   // corrects sign & invariant
-  big_integer & correct_sign_bit(bool expected_sign_bit, std::optional<place_t> carry = {});
+  big_integer & correct_sign_bit(bool expected_sign_bit, place_t carry = 0);
   // corrects invariant
   big_integer & shrink();
   // destroys invariant, inflating data
@@ -144,16 +96,20 @@ private:
   size_t size() const;
   size_t unsigned_size() const;
   place_t default_place() const;
-  place_t get_or_default(int at) const;
+  place_t get_or_default(int64_t at) const;
 
   /* Useful iterating functions */
-  void iterate(const big_integer &b, const std::function<place_t (place_t, place_t)> &action);
-  void iterate(const std::function<place_t (place_t)> &action);
-  void iterate_r(const std::function<place_t (place_t)> &action);
-  void iterate(const std::function<void (place_t)> &action) const;
-  void iterate_r(const std::function<void (place_t)> &action) const;
+  using binary_operator = std::function<place_t (place_t, place_t)>;
+  using unary_operator = std::function<place_t (place_t)>;
+  using unary_consumer = std::function<void (place_t)>;
+
+  void iterate(const big_integer &b, const binary_operator &action);
+  void iterate(const unary_operator &action);
+  void iterate_r(const unary_operator &action);
+  void iterate(const unary_consumer &action) const;
+  void iterate_r(const unary_consumer &action) const;
   big_integer & place_wise(const big_integer &b,
-    const std::function<place_t (place_t, place_t)> &action);
+    const binary_operator &action);
 };
 
 big_integer operator+(big_integer a, const big_integer &b);

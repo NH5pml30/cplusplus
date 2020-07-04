@@ -1,4 +1,4 @@
-LONG_QWORDS_LENGTH equ          128
+LONG_QWORDS_LENGTH equ          256
                 section         .text
                 global          _start
 _start:

@@ -9,23 +9,24 @@
 #include <vector>
 #include <string>
 #include <functional>
-#include <optional>
 
-class big_integer
+struct big_integer
 {
 /* all public functions provide weak exception guarantee (invariant holds) */
 private:
   // digit type -- only uint32_t supported because of division
   using place_t = uint32_t;
+  using storage_t = std::vector<place_t>;
+
   // invariant:
   // sign -- highest bit in last place (1 -- negative)
   // data has the smallest size representing the same number in 2's complement form
-  std::vector<place_t> data = {place_t{0}};
+  storage_t data;
   static constexpr int PLACE_BITS = std::numeric_limits<place_t>::digits;
 
 public:
   big_integer();
-  big_integer(const big_integer &other);
+  big_integer(const big_integer &other) = default;
   big_integer(int a);
   explicit big_integer(std::string const &str);
   ~big_integer();
@@ -76,7 +77,7 @@ private:
 
   /* Invariant-changing functions */
   // corrects sign & invariant
-  big_integer & correct_sign_bit(bool expected_sign_bit, std::optional<place_t> carry = {});
+  big_integer & correct_sign_bit(bool expected_sign_bit, place_t carry = 0);
   // corrects invariant
   big_integer & shrink();
   // destroys invariant, inflating data
@@ -92,11 +93,20 @@ private:
   size_t size() const;
   size_t unsigned_size() const;
   place_t default_place() const;
-  place_t get_or_default(int at) const;
+  place_t get_or_default(int64_t at) const;
 
-  void iterate(const big_integer &b, std::function<void (place_t &l, place_t r)> action);
+  /* Useful iterating functions */
+  using binary_operator = std::function<place_t (place_t, place_t)>;
+  using unary_operator = std::function<place_t (place_t)>;
+  using unary_consumer = std::function<void (place_t)>;
+
+  void iterate(const big_integer &b, const binary_operator &action);
+  void iterate(const unary_operator &action);
+  void iterate_r(const unary_operator &action);
+  void iterate(const unary_consumer &action) const;
+  void iterate_r(const unary_consumer &action) const;
   big_integer & place_wise(const big_integer &b,
-                           std::function<place_t (place_t l, place_t r)> action);
+    const binary_operator &action);
 };
 
 big_integer operator+(big_integer a, const big_integer &b);
@@ -120,6 +130,6 @@ bool operator<=(const big_integer &a, const big_integer &b);
 bool operator>=(const big_integer &a, const big_integer &b);
 
 std::string to_string(const big_integer &a);
-std::ostream &operator<<(std::ostream &s, const big_integer &a);
+std::ostream & operator<<(std::ostream &s, const big_integer &a);
 
 #endif // BIG_INTEGER_H

@@ -38,9 +38,11 @@
   <ItemGroup>
     <ClCompile Include="big_integer.cpp" />
     <ClCompile Include="big_integer_testing.cpp" />
+    <ClCompile Include="optimized_buffer.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="big_integer.h" />
+    <ClInclude Include="optimized_buffer.h" />
   </ItemGroup>
   <ItemDefinitionGroup />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
